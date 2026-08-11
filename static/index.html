@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Linux/Server Monitoring Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="/static/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div class="dashboard-container">
+        <!-- Header -->
+        <header class="dashboard-header">
+            <div class="header-title">
+                <i class="fa-solid fa-server header-icon"></i>
+                <div>
+                    <h1>Server Monitor</h1>
+                    <div class="system-meta" id="systemMeta">
+                        <span id="hostname"><i class="fa-solid fa-laptop"></i> --</span>
+                        <span class="meta-divider">•</span>
+                        <span id="osInfo"><i class="fa-solid fa-microchip"></i> --</span>
+                    </div>
+                </div>
+            </div>
+            <div class="header-status">
+                <div class="status-badge" id="statusBadge">
+                    <span class="status-dot"></span>
+                    <span id="statusText">ONLINE</span>
+                </div>
+                <div class="uptime-badge">
+                    <i class="fa-regular fa-clock"></i> Uptime: <span id="uptime">--</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Dashboard Grid -->
+        <main class="dashboard-grid">
+            <!-- CPU Card -->
+            <div class="card cpu-card">
+                <div class="card-header">
+                    <div class="card-title">
+                        <i class="fa-solid fa-cpu card-icon icon-cpu"></i>
+                        <h2>CPU Usage</h2>
+                    </div>
+                    <span class="badge" id="cpuCores">-- Cores</span>
+                </div>
+                <div class="metric-main">
+                    <div class="metric-value-container">
+                        <span class="metric-value" id="cpuPercent">0</span>
+                        <span class="metric-unit">%</span>
+                    </div>
+                    <div class="metric-sub" style="display: flex; gap: 12px; align-items: center;">
+                        <span id="cpuFreq" title="Frequency">-- MHz</span>
+                        <span id="cpuTemp" title="Temperature"><i class="fa-solid fa-temperature-half"></i> -- °C</span>
+                        <span id="cpuPower" title="Power Consumption"><i class="fa-solid fa-plug"></i> -- W</span>
+                    </div>
+                </div>
+                <div class="chart-container">
+                    <canvas id="cpuChart"></canvas>
+                </div>
+                <div class="per-core-container" id="perCoreList">
+                    <!-- Dynamic core bars -->
+                </div>
+            </div>
+
+            <!-- Memory Card -->
+            <div class="card memory-card">
+                <div class="card-header">
+                    <div class="card-title">
+                        <i class="fa-solid fa-memory card-icon icon-memory"></i>
+                        <h2>Memory Usage</h2>
+                    </div>
+                    <span class="badge" id="ramTotal">-- GB</span>
+                </div>
+                <div class="metric-main">
+                    <div class="metric-value-container">
+                        <span class="metric-value" id="memoryPercent">0</span>
+                        <span class="metric-unit">%</span>
+                    </div>
+                    <div class="metric-sub">
+                        <span id="ramUsed">0 GB</span> / <span id="ramAvailable">0 GB</span> Free
+                    </div>
+                </div>
+                <div class="chart-container">
+                    <canvas id="memoryChart"></canvas>
+                </div>
+                <div class="progress-bar-group">
+                    <div class="progress-bar-label">
+                        <span>Swap Usage</span>
+                        <span id="swapPercentText">0%</span>
+                    </div>
+                    <div class="progress-bar-track">
+                        <div class="progress-bar-fill swap-fill" id="swapBar" style="width: 0%"></div>
+                    </div>
+                    <div class="sub-detail" id="swapSubDetail">0 GB / 0 GB</div>
+                </div>
+            </div>
+
+            <!-- Network Card -->
+            <div class="card network-card">
+                <div class="card-header">
+                    <div class="card-title">
+                        <i class="fa-solid fa-network-wired card-icon icon-network"></i>
+                        <h2>Network I/O</h2>
+                    </div>
+                </div>
+                <div class="network-speed-grid">
+                    <div class="speed-box download">
+                        <div class="speed-icon"><i class="fa-solid fa-arrow-down"></i></div>
+                        <div class="speed-info">
+                            <span class="speed-label">DOWNLOAD</span>
+                            <span class="speed-value" id="downloadSpeed">0.0</span>
+                            <span class="speed-unit">KB/s</span>
+                        </div>
+                    </div>
+                    <div class="speed-box upload">
+                        <div class="speed-icon"><i class="fa-solid fa-arrow-up"></i></div>
+                        <div class="speed-info">
+                            <span class="speed-label">UPLOAD</span>
+                            <span class="speed-value" id="uploadSpeed">0.0</span>
+                            <span class="speed-unit">KB/s</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="network-totals">
+                    <div class="net-total-item">
+                        <span>Total Received:</span>
+                        <strong id="netTotalRecv">0 MB</strong>
+                    </div>
+                    <div class="net-total-item">
+                        <span>Total Sent:</span>
+                        <strong id="netTotalSent">0 MB</strong>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Disk Card -->
+            <div class="card disk-card">
+                <div class="card-header">
+                    <div class="card-title">
+                        <i class="fa-solid fa-hard-drive card-icon icon-disk"></i>
+                        <h2>Storage Partitions</h2>
+                    </div>
+                </div>
+                <div class="disks-container" id="disksList">
+                    <!-- Dynamic Disk Items -->
+                </div>
+            </div>
+
+            <!-- Top Processes Card -->
+            <div class="card processes-card span-2">
+                <div class="card-header">
+                    <div class="card-title">
+                        <i class="fa-solid fa-list-check card-icon icon-process"></i>
+                        <h2>Top CPU Processes</h2>
+                    </div>
+                </div>
+                <div class="table-responsive">
+                    <table class="process-table">
+                        <thead>
+                            <tr>
+                                <th>PID</th>
+                                <th>Process Name</th>
+                                <th>CPU %</th>
+                                <th>Memory %</th>
+                            </tr>
+                        </thead>
+                        <tbody id="processTableBody">
+                            <tr><td colspan="4" class="text-center">Loading processes...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </main>
+    </div>
+    <script src="/static/app.js"></script>
+</body>
+</html>
