@@ -2,7 +2,9 @@ import argparse
 import os
 import platform
 import time
-from typing import Dict, Any, List
+import threading
+from typing import Dict, Any, List, Optional
+from contextlib import asynccontextmanager
 
 import psutil
 import uvicorn
@@ -11,16 +13,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 
-app = FastAPI(title="Server Monitor API")
-
-# Enable CORS for convenience during development
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# Global cache & lock for server metrics
+latest_stats: Dict[str, Any] = {}
+stats_lock = threading.Lock()
+collector_thread: Optional[threading.Thread] = None
+is_running = True
 
 # Helper function to convert bytes to human readable format
 def bytes_to_gb(b: int) -> float:
@@ -73,122 +70,181 @@ def get_cpu_temperature():
         pass
     return None
 
-# Initialize psutil cpu measurement
-psutil.cpu_percent(interval=None)
+def collect_metrics_loop():
+    """Background thread to collect system metrics periodically without blocking requests."""
+    global last_net_io, last_net_time, latest_stats, is_running
+    
+    # Initialize CPU measurement counters
+    psutil.cpu_percent(interval=None)
+    psutil.cpu_percent(interval=None, percpu=True)
+    
+    # Static system information
+    boot_time = psutil.boot_time()
+    hostname = platform.node()
+    os_info = f"{platform.system()} {platform.release()}"
+    architecture = platform.machine()
+    cores_logical = psutil.cpu_count(logical=True)
+    cores_physical = psutil.cpu_count(logical=False)
+    
+    tick_count = 0
+    top_processes: List[Dict[str, Any]] = []
+    
+    while is_running:
+        try:
+            # Measure overall CPU percent over 1.0s interval (this also sleeps 1.0s)
+            cpu_overall = psutil.cpu_percent(interval=1.0)
+            cpu_per_core = psutil.cpu_percent(interval=None, percpu=True)
+            cpu_freq = psutil.cpu_freq()
+            current_time = time.time()
+            uptime_seconds = int(current_time - boot_time)
+            
+            # Memory
+            vmem = psutil.virtual_memory()
+            swap = psutil.swap_memory()
+            
+            # Disk Usage
+            disk_partitions_info = []
+            for part in psutil.disk_partitions(all=False):
+                # Ignore loop devices and snap packages on Linux
+                if part.device.startswith("/dev/loop") or part.mountpoint.startswith("/snap") or part.fstype == "squashfs":
+                    continue
+                try:
+                    usage = psutil.disk_usage(part.mountpoint)
+                    disk_partitions_info.append({
+                        "device": part.device,
+                        "mountpoint": part.mountpoint,
+                        "fstype": part.fstype,
+                        "total": bytes_to_gb(usage.total),
+                        "used": bytes_to_gb(usage.used),
+                        "free": bytes_to_gb(usage.free),
+                        "percent": usage.percent,
+                    })
+                except Exception:
+                    continue
+
+            # Disk I/O
+            try:
+                disk_io = psutil.disk_io_counters()
+                disk_io_data = {
+                    "read_bytes": disk_io.read_bytes if disk_io else 0,
+                    "write_bytes": disk_io.write_bytes if disk_io else 0,
+                }
+            except Exception:
+                disk_io_data = {"read_bytes": 0, "write_bytes": 0}
+
+            # Network I/O & Speed calculation
+            net_io = psutil.net_io_counters()
+            upload_speed = 0.0
+            download_speed = 0.0
+            
+            if last_net_io and last_net_time:
+                time_delta = current_time - last_net_time
+                if time_delta > 0:
+                    upload_speed = max(0, (net_io.bytes_sent - last_net_io.bytes_sent) / time_delta)
+                    download_speed = max(0, (net_io.bytes_recv - last_net_io.bytes_recv) / time_delta)
+
+            last_net_io = net_io
+            last_net_time = current_time
+
+            # Update top processes every 2 ticks (~2 seconds)
+            tick_count += 1
+            if tick_count % 2 == 1 or not top_processes:
+                processes: List[Dict[str, Any]] = []
+                for p in psutil.process_iter(['pid', 'name', 'cpu_percent', 'memory_percent']):
+                    try:
+                        info = p.info
+                        # Skip System Idle Process (PID 0) on Windows to avoid skewing top process list
+                        if info['pid'] == 0:
+                            continue
+                        processes.append({
+                            "pid": info['pid'],
+                            "name": info['name'] or "Unknown",
+                            "cpu": round(info['cpu_percent'] or 0.0, 1),
+                            "memory": round(info['memory_percent'] or 0.0, 1)
+                        })
+                    except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                        pass
+                top_processes = sorted(processes, key=lambda x: x['cpu'], reverse=True)[:5]
+
+            # Construct stats snapshot
+            snapshot = {
+                "system": {
+                    "hostname": hostname,
+                    "os": os_info,
+                    "architecture": architecture,
+                    "uptime_seconds": uptime_seconds,
+                    "boot_time": boot_time,
+                },
+                "cpu": {
+                    "overall": cpu_overall,
+                    "per_core": cpu_per_core,
+                    "cores_logical": cores_logical,
+                    "cores_physical": cores_physical,
+                    "frequency_mhz": round(cpu_freq.current, 1) if cpu_freq else 0,
+                    "temperature_c": get_cpu_temperature(),
+                    "power_w": get_cpu_power(),
+                },
+                "memory": {
+                    "total_gb": bytes_to_gb(vmem.total),
+                    "used_gb": bytes_to_gb(vmem.used),
+                    "available_gb": bytes_to_gb(vmem.available),
+                    "percent": vmem.percent,
+                    "swap_total_gb": bytes_to_gb(swap.total),
+                    "swap_used_gb": bytes_to_gb(swap.used),
+                    "swap_percent": swap.percent,
+                },
+                "disks": disk_partitions_info,
+                "disk_io": disk_io_data,
+                "network": {
+                    "bytes_sent": net_io.bytes_sent,
+                    "bytes_recv": net_io.bytes_recv,
+                    "upload_speed_kbps": round(upload_speed / 1024, 1),
+                    "download_speed_kbps": round(download_speed / 1024, 1),
+                },
+                "top_processes": top_processes,
+            }
+
+            with stats_lock:
+                latest_stats = snapshot
+                
+        except Exception as e:
+            print(f"[WARN] Error in metrics collector loop: {e}")
+            time.sleep(1.0)
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    global collector_thread, is_running
+    is_running = True
+    collector_thread = threading.Thread(target=collect_metrics_loop, daemon=True)
+    collector_thread.start()
+    yield
+    is_running = False
+
+app = FastAPI(title="Server Monitor API", lifespan=lifespan)
+
+# Enable CORS for convenience during development
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 @app.get("/api/stats")
 def get_stats() -> Dict[str, Any]:
-    global last_net_io, last_net_time
-    current_time = time.time()
-    
-    # System Info
-    boot_time = psutil.boot_time()
-    uptime_seconds = int(current_time - boot_time)
-    
-    # CPU
-    cpu_overall = psutil.cpu_percent(interval=None)
-    cpu_per_core = psutil.cpu_percent(interval=None, percpu=True)
-    cpu_freq = psutil.cpu_freq()
-    
-    # Memory
-    vmem = psutil.virtual_memory()
-    swap = psutil.swap_memory()
-    
-    # Disk Usage
-    disk_partitions_info = []
-    for part in psutil.disk_partitions(all=False):
-        try:
-            usage = psutil.disk_usage(part.mountpoint)
-            disk_partitions_info.append({
-                "device": part.device,
-                "mountpoint": part.mountpoint,
-                "fstype": part.fstype,
-                "total": bytes_to_gb(usage.total),
-                "used": bytes_to_gb(usage.used),
-                "free": bytes_to_gb(usage.free),
-                "percent": usage.percent,
-            })
-        except PermissionError:
-            continue
-        except Exception:
-            continue
-
-    # Disk I/O
-    try:
-        disk_io = psutil.disk_io_counters()
-        disk_io_data = {
-            "read_bytes": disk_io.read_bytes if disk_io else 0,
-            "write_bytes": disk_io.write_bytes if disk_io else 0,
-        }
-    except Exception:
-        disk_io_data = {"read_bytes": 0, "write_bytes": 0}
-        
-    # Network I/O & Speed calculation
-    net_io = psutil.net_io_counters()
-    upload_speed = 0.0
-    download_speed = 0.0
-    
-    if last_net_io and last_net_time:
-        time_delta = current_time - last_net_time
-        if time_delta > 0:
-            upload_speed = max(0, (net_io.bytes_sent - last_net_io.bytes_sent) / time_delta)
-            download_speed = max(0, (net_io.bytes_recv - last_net_io.bytes_recv) / time_delta)
-
-    last_net_io = net_io
-    last_net_time = current_time
-
-    # Top processes by CPU
-    processes: List[Dict[str, Any]] = []
-    for p in psutil.process_iter(['pid', 'name', 'cpu_percent', 'memory_percent']):
-        try:
-            info = p.info
-            processes.append({
-                "pid": info['pid'],
-                "name": info['name'] or "Unknown",
-                "cpu": round(info['cpu_percent'] or 0.0, 1),
-                "memory": round(info['memory_percent'] or 0.0, 1)
-            })
-        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
-            pass
-            
-    # Sort top 5 processes by CPU usage
-    top_processes = sorted(processes, key=lambda x: x['cpu'], reverse=True)[:5]
-
+    with stats_lock:
+        if latest_stats:
+            return latest_stats
+    # Fallback if accessed immediately at startup before first background tick finishes
     return {
-        "system": {
-            "hostname": platform.node(),
-            "os": f"{platform.system()} {platform.release()}",
-            "architecture": platform.machine(),
-            "uptime_seconds": uptime_seconds,
-            "boot_time": boot_time,
-        },
-        "cpu": {
-            "overall": cpu_overall,
-            "per_core": cpu_per_core,
-            "cores_logical": psutil.cpu_count(logical=True),
-            "cores_physical": psutil.cpu_count(logical=False),
-            "frequency_mhz": round(cpu_freq.current, 1) if cpu_freq else 0,
-            "temperature_c": get_cpu_temperature(),
-            "power_w": get_cpu_power(),
-        },
-        "memory": {
-            "total_gb": bytes_to_gb(vmem.total),
-            "used_gb": bytes_to_gb(vmem.used),
-            "available_gb": bytes_to_gb(vmem.available),
-            "percent": vmem.percent,
-            "swap_total_gb": bytes_to_gb(swap.total),
-            "swap_used_gb": bytes_to_gb(swap.used),
-            "swap_percent": swap.percent,
-        },
-        "disks": disk_partitions_info,
-        "disk_io": disk_io_data,
-        "network": {
-            "bytes_sent": net_io.bytes_sent,
-            "bytes_recv": net_io.bytes_recv,
-            "upload_speed_kbps": round(upload_speed / 1024, 1),
-            "download_speed_kbps": round(download_speed / 1024, 1),
-        },
-        "top_processes": top_processes,
+        "system": {"hostname": platform.node(), "os": f"{platform.system()} {platform.release()}", "architecture": platform.machine(), "uptime_seconds": 0, "boot_time": time.time()},
+        "cpu": {"overall": 0, "per_core": [], "cores_logical": psutil.cpu_count(logical=True), "cores_physical": psutil.cpu_count(logical=False), "frequency_mhz": 0, "temperature_c": None, "power_w": None},
+        "memory": {"total_gb": 0, "used_gb": 0, "available_gb": 0, "percent": 0, "swap_total_gb": 0, "swap_used_gb": 0, "swap_percent": 0},
+        "disks": [],
+        "disk_io": {"read_bytes": 0, "write_bytes": 0},
+        "network": {"bytes_sent": 0, "bytes_recv": 0, "upload_speed_kbps": 0, "download_speed_kbps": 0},
+        "top_processes": []
     }
 
 # Serve static directory
@@ -208,3 +264,4 @@ if __name__ == "__main__":
 
     print(f"[INFO] Starting Server Monitor on http://{args.host}:{args.port}")
     uvicorn.run(app, host=args.host, port=args.port)
+
