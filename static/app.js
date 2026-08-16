@@ -159,17 +159,24 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // Helper: format seconds to HH:MM:SS / Days
+    // Helper: format seconds to HH:MM:SS / Days (with zero-padding to prevent layout shift)
     function formatUptime(seconds) {
         const days = Math.floor(seconds / 86400);
         const hours = Math.floor((seconds % 86400) / 3600);
         const mins = Math.floor((seconds % 3600) / 60);
         const secs = seconds % 60;
         
+        const pad = (n) => String(n).padStart(2, '0');
+        
         let result = [];
-        if (days > 0) result.push(`${days}d`);
-        if (hours > 0 || days > 0) result.push(`${hours}h`);
-        result.push(`${mins}m ${secs}s`);
+        if (days > 0) {
+            result.push(`${days}d`);
+            result.push(`${pad(hours)}h`);
+        } else if (hours > 0) {
+            result.push(`${pad(hours)}h`);
+        }
+        result.push(`${pad(mins)}m`);
+        result.push(`${pad(secs)}s`);
         return result.join(' ');
     }
 
@@ -216,15 +223,17 @@ document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('statusBadge').style.borderColor = 'rgba(16, 185, 129, 0.3)';
             document.getElementById('statusText').innerText = 'ONLINE';
 
-            // Server Time & System Info (Calculated locally each second)
-            if (data.system.current_timestamp) {
-                serverTimeOffsetMs = (data.system.current_timestamp * 1000) - Date.now();
-                serverBootTime = data.system.boot_time;
-                hasServerTime = true;
-                updateClocks();
-            } else if (data.system.server_time) {
-                document.getElementById('serverTime').innerText = data.system.server_time;
-                document.getElementById('uptime').innerText = formatUptime(data.system.uptime_seconds);
+            // Server Time & System Info (Initialize offset on first load only)
+            if (!hasServerTime) {
+                if (data.system.current_timestamp) {
+                    serverTimeOffsetMs = (data.system.current_timestamp * 1000) - Date.now();
+                    serverBootTime = data.system.boot_time;
+                    hasServerTime = true;
+                    updateClocks();
+                } else if (data.system.server_time) {
+                    document.getElementById('serverTime').innerText = data.system.server_time;
+                    document.getElementById('uptime').innerText = formatUptime(data.system.uptime_seconds);
+                }
             }
 
             document.getElementById('hostname').innerHTML = `<i class="fa-solid fa-laptop"></i> ${data.system.hostname}`;
@@ -256,7 +265,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 perCoreContainer.innerHTML = data.cpu.per_core.map((coreUsage, idx) => `
                     <div class="core-item">
                         <div class="core-header">
-                            <span>Core ${idx}</span>
+                            <span>#${idx}</span>
                             <span>${coreUsage}%</span>
                         </div>
                         <div class="core-bar-track">
