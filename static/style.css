@@ -135,7 +135,7 @@ body {
     100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
 }
 
-.time-badge, .uptime-badge {
+.time-badge, .uptime-badge, .interval-badge {
     font-size: 0.82rem;
     color: var(--text-secondary);
     background: rgba(255, 255, 255, 0.04);
@@ -152,6 +152,27 @@ body {
     color: var(--accent-blue);
     background: rgba(56, 189, 248, 0.08);
     border-color: rgba(56, 189, 248, 0.2);
+}
+
+.interval-badge {
+    padding: 4px 10px;
+}
+
+.interval-badge select {
+    background: transparent;
+    border: none;
+    color: var(--text-primary);
+    font-family: inherit;
+    font-size: 0.82rem;
+    font-weight: 600;
+    cursor: pointer;
+    outline: none;
+    padding-right: 2px;
+}
+
+.interval-badge select option {
+    background: #161e31;
+    color: var(--text-primary);
 }
 
 /* Main Grid */

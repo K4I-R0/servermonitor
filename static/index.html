@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="stylesheet" href="/static/style.css?v=1.2">
+    <link rel="stylesheet" href="/static/style.css?v=1.3">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
@@ -36,6 +36,16 @@
                 </div>
                 <div class="uptime-badge">
                     <i class="fa-solid fa-stopwatch"></i> Uptime: <span id="uptime">--</span>
+                </div>
+                <div class="interval-badge">
+                    <i class="fa-solid fa-arrows-rotate"></i>
+                    <select id="intervalSelect" aria-label="Refresh Interval">
+                        <option value="1000">1s</option>
+                        <option value="2000">2s</option>
+                        <option value="3000" selected>3s</option>
+                        <option value="5000">5s</option>
+                        <option value="10000">10s</option>
+                    </select>
                 </div>
             </div>
         </header>
@@ -183,6 +193,6 @@
             </div>
         </main>
     </div>
-    <script src="/static/app.js?v=1.2"></script>
+    <script src="/static/app.js?v=1.3"></script>
 </body>
 </html>

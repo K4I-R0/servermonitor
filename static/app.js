@@ -25,6 +25,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 borderWidth: 1,
                 padding: 8,
                 displayColors: false,
+                callbacks: {
+                    label: function(context) {
+                        return `${context.dataset.label}: ${context.parsed.y}%`;
+                    }
+                }
             }
         },
         scales: {
@@ -51,54 +56,62 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     // Setup CPU Chart
-    const cpuCtx = document.getElementById('cpuChart').getContext('2d');
-    const cpuGradient = cpuCtx.createLinearGradient(0, 0, 0, 160);
-    cpuGradient.addColorStop(0, 'rgba(56, 189, 248, 0.45)');
-    cpuGradient.addColorStop(1, 'rgba(56, 189, 248, 0.0)');
+    const cpuEl = document.getElementById('cpuChart');
+    let cpuChart = null;
+    if (cpuEl) {
+        const cpuCtx = cpuEl.getContext('2d');
+        const cpuGradient = cpuCtx.createLinearGradient(0, 0, 0, 160);
+        cpuGradient.addColorStop(0, 'rgba(56, 189, 248, 0.45)');
+        cpuGradient.addColorStop(1, 'rgba(56, 189, 248, 0.0)');
 
-    const cpuChart = new Chart(cpuCtx, {
-        type: 'line',
-        data: {
-            labels: timeLabels,
-            datasets: [{
-                label: 'CPU %',
-                data: cpuData,
-                borderColor: '#38bdf8',
-                borderWidth: 2,
-                backgroundColor: cpuGradient,
-                fill: true,
-                tension: 0.4,
-                pointRadius: 0,
-                pointHoverRadius: 4,
-            }]
-        },
-        options: commonChartOptions
-    });
+        cpuChart = new Chart(cpuCtx, {
+            type: 'line',
+            data: {
+                labels: timeLabels,
+                datasets: [{
+                    label: 'CPU',
+                    data: cpuData,
+                    borderColor: '#38bdf8',
+                    borderWidth: 2,
+                    backgroundColor: cpuGradient,
+                    fill: true,
+                    tension: 0.4,
+                    pointRadius: 0,
+                    pointHoverRadius: 4,
+                }]
+            },
+            options: commonChartOptions
+        });
+    }
 
     // Setup Memory Chart
-    const memCtx = document.getElementById('memoryChart').getContext('2d');
-    const memGradient = memCtx.createLinearGradient(0, 0, 0, 160);
-    memGradient.addColorStop(0, 'rgba(168, 85, 247, 0.45)');
-    memGradient.addColorStop(1, 'rgba(168, 85, 247, 0.0)');
+    const memEl = document.getElementById('memoryChart');
+    let memoryChart = null;
+    if (memEl) {
+        const memCtx = memEl.getContext('2d');
+        const memGradient = memCtx.createLinearGradient(0, 0, 0, 160);
+        memGradient.addColorStop(0, 'rgba(168, 85, 247, 0.45)');
+        memGradient.addColorStop(1, 'rgba(168, 85, 247, 0.0)');
 
-    const memoryChart = new Chart(memCtx, {
-        type: 'line',
-        data: {
-            labels: timeLabels,
-            datasets: [{
-                label: 'Memory %',
-                data: memoryData,
-                borderColor: '#a855f7',
-                borderWidth: 2,
-                backgroundColor: memGradient,
-                fill: true,
-                tension: 0.4,
-                pointRadius: 0,
-                pointHoverRadius: 4,
-            }]
-        },
-        options: commonChartOptions
-    });
+        memoryChart = new Chart(memCtx, {
+            type: 'line',
+            data: {
+                labels: timeLabels,
+                datasets: [{
+                    label: 'Memory',
+                    data: memoryData,
+                    borderColor: '#a855f7',
+                    borderWidth: 2,
+                    backgroundColor: memGradient,
+                    fill: true,
+                    tension: 0.4,
+                    pointRadius: 0,
+                    pointHoverRadius: 4,
+                }]
+            },
+            options: commonChartOptions
+        });
+    }
 
     // Setup Storage Chart
     const storageEl = document.getElementById('storageChart');
@@ -114,7 +127,7 @@ document.addEventListener('DOMContentLoaded', () => {
             data: {
                 labels: [],
                 datasets: [{
-                    label: 'Storage %',
+                    label: 'Storage',
                     data: [],
                     borderColor: '#f59e0b',
                     borderWidth: 2,
@@ -160,6 +173,29 @@ document.addEventListener('DOMContentLoaded', () => {
         return result.join(' ');
     }
 
+    // Local 1-second clock & uptime updater
+    let serverTimeOffsetMs = 0;
+    let serverBootTime = null;
+    let hasServerTime = false;
+
+    function updateClocks() {
+        if (!hasServerTime) return;
+        const nowServerMs = Date.now() + serverTimeOffsetMs;
+        const d = new Date(nowServerMs);
+        
+        const pad = (n) => String(n).padStart(2, '0');
+        const dateStr = `${d.getFullYear()}/${pad(d.getMonth() + 1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+        const serverTimeEl = document.getElementById('serverTime');
+        if (serverTimeEl) serverTimeEl.innerText = dateStr;
+        
+        if (serverBootTime !== null) {
+            const uptimeSecs = Math.max(0, Math.floor((nowServerMs / 1000) - serverBootTime));
+            const uptimeEl = document.getElementById('uptime');
+            if (uptimeEl) uptimeEl.innerText = formatUptime(uptimeSecs);
+        }
+    }
+    setInterval(updateClocks, 1000);
+
     // Helper: format bytes
     function formatBytes(bytes) {
         if (bytes === 0) return '0 B';
@@ -180,11 +216,19 @@ document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('statusBadge').style.borderColor = 'rgba(16, 185, 129, 0.3)';
             document.getElementById('statusText').innerText = 'ONLINE';
 
-            // Server Time & System Info
-            document.getElementById('serverTime').innerText = data.system.server_time || '--';
+            // Server Time & System Info (Calculated locally each second)
+            if (data.system.current_timestamp) {
+                serverTimeOffsetMs = (data.system.current_timestamp * 1000) - Date.now();
+                serverBootTime = data.system.boot_time;
+                hasServerTime = true;
+                updateClocks();
+            } else if (data.system.server_time) {
+                document.getElementById('serverTime').innerText = data.system.server_time;
+                document.getElementById('uptime').innerText = formatUptime(data.system.uptime_seconds);
+            }
+
             document.getElementById('hostname').innerHTML = `<i class="fa-solid fa-laptop"></i> ${data.system.hostname}`;
             document.getElementById('osInfo').innerHTML = `<i class="fa-solid fa-microchip"></i> ${data.system.os} (${data.system.architecture})`;
-            document.getElementById('uptime').innerText = formatUptime(data.system.uptime_seconds);
 
             // CPU Stats
             document.getElementById('cpuPercent').innerText = data.cpu.overall;
@@ -200,9 +244,11 @@ document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('cpuPower').innerHTML = `<i class="fa-solid fa-plug" style="color: var(--accent-emerald);"></i> ${powerStr}`;
 
             // Update CPU Chart
-            cpuData.shift();
-            cpuData.push(data.cpu.overall);
-            cpuChart.update();
+            if (cpuChart) {
+                cpuData.shift();
+                cpuData.push(data.cpu.overall);
+                cpuChart.update();
+            }
 
             // Render Per-Core Bars
             const perCoreContainer = document.getElementById('perCoreList');
@@ -232,9 +278,11 @@ document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('swapSubDetail').innerText = `${data.memory.swap_used_gb} GB / ${data.memory.swap_total_gb} GB`;
 
             // Update Memory Chart
-            memoryData.shift();
-            memoryData.push(data.memory.percent);
-            memoryChart.update();
+            if (memoryChart) {
+                memoryData.shift();
+                memoryData.push(data.memory.percent);
+                memoryChart.update();
+            }
 
             // Network Stats
             document.getElementById('downloadSpeed').innerText = data.network.download_speed_kbps;
@@ -302,8 +350,29 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // Initial fetch & loop every 3 seconds
-    fetchStats();
-    setInterval(fetchStats, 3000);
-});
+    // Interval Selection & Dynamic Loop
+    const intervalSelect = document.getElementById('intervalSelect');
+    const savedInterval = localStorage.getItem('server_monitor_interval') || '3000';
+    if (intervalSelect) {
+        intervalSelect.value = savedInterval;
+    }
 
+    let fetchIntervalId = null;
+    function startFetchLoop(intervalMs) {
+        if (fetchIntervalId) clearInterval(fetchIntervalId);
+        fetchIntervalId = setInterval(fetchStats, intervalMs);
+    }
+
+    if (intervalSelect) {
+        intervalSelect.addEventListener('change', (e) => {
+            const newInterval = parseInt(e.target.value, 10);
+            localStorage.setItem('server_monitor_interval', String(newInterval));
+            startFetchLoop(newInterval);
+            fetchStats();
+        });
+    }
+
+    // Initial fetch & start loop
+    fetchStats();
+    startFetchLoop(parseInt(savedInterval, 10));
+});
