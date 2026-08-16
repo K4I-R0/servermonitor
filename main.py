@@ -22,31 +22,47 @@ collector_thread: Optional[threading.Thread] = None
 is_running = True
 
 HISTORY_FILE = "storage_history.json"
+storage_history_cache: List[Dict[str, Any]] = []
+last_recorded_date: Optional[str] = None
 
-def update_storage_history(usage_percent: float, used_gb: float, total_gb: float) -> List[Dict[str, Any]]:
+def init_storage_history():
+    """Load existing storage history from disk on startup."""
+    global storage_history_cache, last_recorded_date
     try:
-        history = []
         if os.path.exists(HISTORY_FILE):
-            with open(HISTORY_FILE, "r") as f:
-                history = json.load(f)
-        
-        today_str = datetime.now().strftime("%Y-%m-%d")
-        
-        if history and history[-1]["date"] == today_str:
-            history[-1] = {"date": today_str, "percent": usage_percent, "used_gb": used_gb, "total_gb": total_gb}
-        else:
-            history.append({"date": today_str, "percent": usage_percent, "used_gb": used_gb, "total_gb": total_gb})
-            
-        if len(history) > 30:
-            history = history[-30:]
-            
-        with open(HISTORY_FILE, "w") as f:
-            json.dump(history, f)
-            
-        return history
+            with open(HISTORY_FILE, "r", encoding="utf-8") as f:
+                storage_history_cache = json.load(f)
+                if storage_history_cache and isinstance(storage_history_cache, list):
+                    last_recorded_date = storage_history_cache[-1].get("date")
     except Exception as e:
-        print(f"[WARN] Error updating storage history: {e}")
-        return []
+        print(f"[WARN] Error reading storage history: {e}")
+        storage_history_cache = []
+
+def record_storage_history_if_needed(usage_percent: float, used_gb: float, total_gb: float) -> List[Dict[str, Any]]:
+    """Record root partition storage usage only once per day to prevent unnecessary disk I/O."""
+    global storage_history_cache, last_recorded_date
+    today_str = datetime.now().strftime("%Y-%m-%d")
+    
+    if last_recorded_date != today_str:
+        try:
+            # If today's entry already exists in cache, update it; otherwise append
+            if storage_history_cache and storage_history_cache[-1].get("date") == today_str:
+                storage_history_cache[-1] = {"date": today_str, "percent": usage_percent, "used_gb": used_gb, "total_gb": total_gb}
+            else:
+                storage_history_cache.append({"date": today_str, "percent": usage_percent, "used_gb": used_gb, "total_gb": total_gb})
+                
+            if len(storage_history_cache) > 30:
+                storage_history_cache = storage_history_cache[-30:]
+                
+            with open(HISTORY_FILE, "w", encoding="utf-8") as f:
+                json.dump(storage_history_cache, f, ensure_ascii=False, indent=2)
+                
+            last_recorded_date = today_str
+            print(f"[INFO] Recorded storage history for {today_str}: {usage_percent}% ({used_gb}/{total_gb} GB)")
+        except Exception as e:
+            print(f"[WARN] Error recording storage history: {e}")
+            
+    return storage_history_cache
 
 # Helper function to convert bytes to human readable format
 def bytes_to_gb(b: int) -> float:
@@ -115,6 +131,9 @@ def collect_metrics_loop():
     cores_logical = psutil.cpu_count(logical=True)
     cores_physical = psutil.cpu_count(logical=False)
     
+    # Initialize storage history
+    init_storage_history()
+    
     tick_count = 0
     top_processes: List[Dict[str, Any]] = []
     
@@ -133,7 +152,7 @@ def collect_metrics_loop():
             
             # Disk Usage
             disk_partitions_info = []
-            storage_history_data = []
+            storage_history_data = list(storage_history_cache)
             
             is_windows = platform.system() == "Windows"
             system_drive = os.environ.get("SystemDrive", "C:") + "\\" if is_windows else "/"
@@ -152,7 +171,7 @@ def collect_metrics_loop():
                         "free": bytes_to_gb(usage.free),
                         "percent": usage.percent,
                     })
-                    storage_history_data = update_storage_history(usage.percent, bytes_to_gb(usage.used), bytes_to_gb(usage.total))
+                    storage_history_data = record_storage_history_if_needed(usage.percent, bytes_to_gb(usage.used), bytes_to_gb(usage.total))
                 except Exception:
                     continue
 
