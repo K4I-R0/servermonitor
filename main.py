@@ -43,7 +43,17 @@ def record_storage_history_if_needed(usage_percent: float, used_gb: float, total
     global storage_history_cache, last_recorded_date
     today_str = datetime.now().strftime("%Y-%m-%d")
     
+    need_record = False
     if last_recorded_date != today_str:
+        need_record = True
+    elif storage_history_cache and storage_history_cache[-1].get("date") == today_str:
+        # If total_gb differs (e.g., pulled from dev repo to prod server), force re-record
+        if storage_history_cache[-1].get("total_gb") != total_gb:
+            need_record = True
+    elif not storage_history_cache:
+        need_record = True
+    
+    if need_record:
         try:
             # If today's entry already exists in cache, update it; otherwise append
             if storage_history_cache and storage_history_cache[-1].get("date") == today_str:
@@ -150,30 +160,38 @@ def collect_metrics_loop():
             vmem = psutil.virtual_memory()
             swap = psutil.swap_memory()
             
-            # Disk Usage
+            # Disk Usage (Root Partition)
             disk_partitions_info = []
             storage_history_data = list(storage_history_cache)
             
             is_windows = platform.system() == "Windows"
-            system_drive = os.environ.get("SystemDrive", "C:") + "\\" if is_windows else "/"
+            root_mount = os.environ.get("SystemDrive", "C:") + "\\" if is_windows else "/"
 
-            for part in psutil.disk_partitions(all=False):
-                if part.mountpoint != system_drive:
-                    continue
+            try:
+                usage = psutil.disk_usage(root_mount)
+                device_name = root_mount
+                fstype = ""
                 try:
-                    usage = psutil.disk_usage(part.mountpoint)
-                    disk_partitions_info.append({
-                        "device": part.device,
-                        "mountpoint": part.mountpoint,
-                        "fstype": part.fstype,
-                        "total": bytes_to_gb(usage.total),
-                        "used": bytes_to_gb(usage.used),
-                        "free": bytes_to_gb(usage.free),
-                        "percent": usage.percent,
-                    })
-                    storage_history_data = record_storage_history_if_needed(usage.percent, bytes_to_gb(usage.used), bytes_to_gb(usage.total))
+                    for part in psutil.disk_partitions(all=True):
+                        if part.mountpoint == root_mount:
+                            device_name = part.device
+                            fstype = part.fstype
+                            break
                 except Exception:
-                    continue
+                    pass
+
+                disk_partitions_info.append({
+                    "device": device_name,
+                    "mountpoint": root_mount,
+                    "fstype": fstype,
+                    "total": bytes_to_gb(usage.total),
+                    "used": bytes_to_gb(usage.used),
+                    "free": bytes_to_gb(usage.free),
+                    "percent": usage.percent,
+                })
+                storage_history_data = record_storage_history_if_needed(usage.percent, bytes_to_gb(usage.used), bytes_to_gb(usage.total))
+            except Exception as e:
+                print(f"[WARN] Error collecting disk metrics for root '{root_mount}': {e}")
 
             # Disk I/O
             try:

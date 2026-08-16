@@ -101,43 +101,50 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // Setup Storage Chart
-    const storageCtx = document.getElementById('storageChart').getContext('2d');
-    const storageGradient = storageCtx.createLinearGradient(0, 0, 0, 160);
-    storageGradient.addColorStop(0, 'rgba(245, 158, 11, 0.45)');
-    storageGradient.addColorStop(1, 'rgba(245, 158, 11, 0.0)');
+    const storageEl = document.getElementById('storageChart');
+    let storageChart = null;
+    if (storageEl) {
+        const storageCtx = storageEl.getContext('2d');
+        const storageGradient = storageCtx.createLinearGradient(0, 0, 0, 160);
+        storageGradient.addColorStop(0, 'rgba(245, 158, 11, 0.45)');
+        storageGradient.addColorStop(1, 'rgba(245, 158, 11, 0.0)');
 
-    const storageChart = new Chart(storageCtx, {
-        type: 'line',
-        data: {
-            labels: [],
-            datasets: [{
-                label: 'Storage %',
-                data: [],
-                borderColor: '#f59e0b',
-                borderWidth: 2,
-                backgroundColor: storageGradient,
-                fill: true,
-                tension: 0.4,
-                pointRadius: 2,
-                pointHoverRadius: 5,
-            }]
-        },
-        options: {
-            ...commonChartOptions,
-            scales: {
-                x: {
-                    display: true,
-                    grid: { display: false },
-                    ticks: { color: '#64748b', font: { size: 10 } }
-                },
-                y: {
-                    ...commonChartOptions.scales.y,
-                    suggestedMin: 0,
-                    suggestedMax: 100
+        storageChart = new Chart(storageCtx, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'Storage %',
+                    data: [],
+                    borderColor: '#f59e0b',
+                    borderWidth: 2,
+                    backgroundColor: storageGradient,
+                    fill: true,
+                    tension: 0.3,
+                    pointRadius: 4,
+                    pointBackgroundColor: '#f59e0b',
+                    pointBorderColor: '#ffffff',
+                    pointBorderWidth: 1.5,
+                    pointHoverRadius: 6,
+                }]
+            },
+            options: {
+                ...commonChartOptions,
+                scales: {
+                    x: {
+                        display: true,
+                        grid: { display: false },
+                        ticks: { color: '#64748b', font: { size: 10 } }
+                    },
+                    y: {
+                        ...commonChartOptions.scales.y,
+                        suggestedMin: 0,
+                        suggestedMax: 100
+                    }
                 }
             }
-        }
-    });
+        });
+    }
 
     // Helper: format seconds to HH:MM:SS / Days
     function formatUptime(seconds) {
@@ -260,7 +267,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             // Update Storage Chart (History)
-            if (data.storage_history && data.storage_history.length > 0) {
+            if (storageChart && data.storage_history && data.storage_history.length > 0) {
                 // Parse date strings to simpler format (e.g., MM/DD)
                 const storageLabels = data.storage_history.map(item => {
                     const parts = item.date.split('-');

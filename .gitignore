@@ -8,3 +8,5 @@ ENV/
 .idea/
 .vscode/
 *.log
+storage_history.json
+commit_msg.txt
