@@ -7,12 +7,53 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Chart.js default style tweaks
     Chart.defaults.color = '#94a3b8';
-    Chart.defaults.font.family = "'Inter', sans-serif";
+    Chart.defaults.font.family = "'Inter', system-ui, -apple-system, sans-serif";
+
+    const commonChartOptions = {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: false,
+        plugins: {
+            legend: { display: false },
+            tooltip: {
+                mode: 'index',
+                intersect: false,
+                backgroundColor: 'rgba(15, 23, 42, 0.9)',
+                titleColor: '#f1f5f9',
+                bodyColor: '#cbd5e1',
+                borderColor: 'rgba(255, 255, 255, 0.1)',
+                borderWidth: 1,
+                padding: 8,
+                displayColors: false,
+            }
+        },
+        scales: {
+            x: {
+                display: false
+            },
+            y: {
+                min: 0,
+                max: 100,
+                grid: {
+                    color: 'rgba(255, 255, 255, 0.05)',
+                    drawBorder: false
+                },
+                ticks: {
+                    color: '#64748b',
+                    font: { size: 10 },
+                    stepSize: 25,
+                    callback: function(value) {
+                        return value + '%';
+                    }
+                }
+            }
+        }
+    };
 
     // Setup CPU Chart
     const cpuCtx = document.getElementById('cpuChart').getContext('2d');
     const cpuGradient = cpuCtx.createLinearGradient(0, 0, 0, 160);
-    cpuGradient.addColorStop(0, 'rgba(56, 189, 248, 0.4)');
+    cpuGradient.addColorStop(0, 'rgba(56, 189, 248, 0.45)');
     cpuGradient.addColorStop(1, 'rgba(56, 189, 248, 0.0)');
 
     const cpuChart = new Chart(cpuCtx, {
@@ -31,22 +72,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 pointHoverRadius: 4,
             }]
         },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            animation: false,
-            plugins: { legend: { display: false }, tooltip: { mode: 'index', intersect: false } },
-            scales: {
-                x: { display: false },
-                y: { min: 0, max: 100, grid: { color: 'rgba(255, 255, 255, 0.05)' } }
-            }
-        }
+        options: commonChartOptions
     });
 
     // Setup Memory Chart
     const memCtx = document.getElementById('memoryChart').getContext('2d');
     const memGradient = memCtx.createLinearGradient(0, 0, 0, 160);
-    memGradient.addColorStop(0, 'rgba(168, 85, 247, 0.4)');
+    memGradient.addColorStop(0, 'rgba(168, 85, 247, 0.45)');
     memGradient.addColorStop(1, 'rgba(168, 85, 247, 0.0)');
 
     const memoryChart = new Chart(memCtx, {
@@ -65,14 +97,44 @@ document.addEventListener('DOMContentLoaded', () => {
                 pointHoverRadius: 4,
             }]
         },
+        options: commonChartOptions
+    });
+
+    // Setup Storage Chart
+    const storageCtx = document.getElementById('storageChart').getContext('2d');
+    const storageGradient = storageCtx.createLinearGradient(0, 0, 0, 160);
+    storageGradient.addColorStop(0, 'rgba(245, 158, 11, 0.45)');
+    storageGradient.addColorStop(1, 'rgba(245, 158, 11, 0.0)');
+
+    const storageChart = new Chart(storageCtx, {
+        type: 'line',
+        data: {
+            labels: [],
+            datasets: [{
+                label: 'Storage %',
+                data: [],
+                borderColor: '#f59e0b',
+                borderWidth: 2,
+                backgroundColor: storageGradient,
+                fill: true,
+                tension: 0.4,
+                pointRadius: 2,
+                pointHoverRadius: 5,
+            }]
+        },
         options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            animation: false,
-            plugins: { legend: { display: false }, tooltip: { mode: 'index', intersect: false } },
+            ...commonChartOptions,
             scales: {
-                x: { display: false },
-                y: { min: 0, max: 100, grid: { color: 'rgba(255, 255, 255, 0.05)' } }
+                x: {
+                    display: true,
+                    grid: { display: false },
+                    ticks: { color: '#64748b', font: { size: 10 } }
+                },
+                y: {
+                    ...commonChartOptions.scales.y,
+                    suggestedMin: 0,
+                    suggestedMax: 100
+                }
             }
         }
     });
@@ -111,14 +173,17 @@ document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('statusBadge').style.borderColor = 'rgba(16, 185, 129, 0.3)';
             document.getElementById('statusText').innerText = 'ONLINE';
 
-            // System Info
+            // Server Time & System Info
+            document.getElementById('serverTime').innerText = data.system.server_time || '--';
             document.getElementById('hostname').innerHTML = `<i class="fa-solid fa-laptop"></i> ${data.system.hostname}`;
             document.getElementById('osInfo').innerHTML = `<i class="fa-solid fa-microchip"></i> ${data.system.os} (${data.system.architecture})`;
             document.getElementById('uptime').innerText = formatUptime(data.system.uptime_seconds);
 
             // CPU Stats
             document.getElementById('cpuPercent').innerText = data.cpu.overall;
-            document.getElementById('cpuCores').innerText = `${data.cpu.cores_physical || data.cpu.cores_logical} P / ${data.cpu.cores_logical} L Cores`;
+            const physCores = data.cpu.cores_physical || Math.floor(data.cpu.cores_logical / 2);
+            const logicalThreads = data.cpu.cores_logical;
+            document.getElementById('cpuCores').innerText = `${physCores} Cores / ${logicalThreads} Threads`;
             document.getElementById('cpuFreq').innerHTML = `<i class="fa-solid fa-bolt" style="color: var(--accent-amber);"></i> ${data.cpu.frequency_mhz} MHz`;
             
             const tempStr = data.cpu.temperature_c !== null ? `${data.cpu.temperature_c} °C` : '-- °C';
@@ -178,7 +243,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         <div class="disk-header">
                             <div class="disk-name">
                                 <i class="fa-solid fa-database" style="color: var(--accent-amber);"></i>
-                                ${disk.device}
+                                <span>${disk.device}</span>
                                 <span class="disk-mount">${disk.mountpoint}</span>
                             </div>
                             <div class="disk-stats">
@@ -191,7 +256,21 @@ document.addEventListener('DOMContentLoaded', () => {
                     </div>
                 `).join('');
             } else {
-                disksContainer.innerHTML = '<div class="sub-detail">No partitions available</div>';
+                disksContainer.innerHTML = '<div class="sub-detail" style="text-align: center; padding: 12px;">No partitions available</div>';
+            }
+
+            // Update Storage Chart (History)
+            if (data.storage_history && data.storage_history.length > 0) {
+                // Parse date strings to simpler format (e.g., MM/DD)
+                const storageLabels = data.storage_history.map(item => {
+                    const parts = item.date.split('-');
+                    return parts.length === 3 ? `${parts[1]}/${parts[2]}` : item.date;
+                });
+                const storagePercents = data.storage_history.map(item => item.percent);
+
+                storageChart.data.labels = storageLabels;
+                storageChart.data.datasets[0].data = storagePercents;
+                storageChart.update();
             }
 
             // Processes
@@ -200,7 +279,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 tbody.innerHTML = data.top_processes.map(proc => `
                     <tr>
                         <td><code>${proc.pid}</code></td>
-                        <td>${proc.name}</td>
+                        <td class="proc-name-cell" title="${proc.name}">${proc.name}</td>
                         <td><strong style="color: var(--accent-blue);">${proc.cpu}%</strong></td>
                         <td>${proc.memory}%</td>
                     </tr>
@@ -216,7 +295,8 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // Initial fetch & loop every 1 second
+    // Initial fetch & loop every 3 seconds
     fetchStats();
-    setInterval(fetchStats, 1000);
+    setInterval(fetchStats, 3000);
 });
+

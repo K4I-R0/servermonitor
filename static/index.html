@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="ja">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Linux/Server Monitoring Dashboard</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Server Monitoring Dashboard</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -31,8 +31,11 @@
                     <span class="status-dot"></span>
                     <span id="statusText">ONLINE</span>
                 </div>
+                <div class="time-badge">
+                    <i class="fa-regular fa-clock"></i> <span id="serverTime">--</span>
+                </div>
                 <div class="uptime-badge">
-                    <i class="fa-regular fa-clock"></i> Uptime: <span id="uptime">--</span>
+                    <i class="fa-solid fa-stopwatch"></i> Uptime: <span id="uptime">--</span>
                 </div>
             </div>
         </header>
@@ -46,17 +49,17 @@
                         <i class="fa-solid fa-cpu card-icon icon-cpu"></i>
                         <h2>CPU Usage</h2>
                     </div>
-                    <span class="badge" id="cpuCores">-- Cores</span>
+                    <span class="badge" id="cpuCores">-- Cores / -- Threads</span>
                 </div>
                 <div class="metric-main">
                     <div class="metric-value-container">
                         <span class="metric-value" id="cpuPercent">0</span>
                         <span class="metric-unit">%</span>
                     </div>
-                    <div class="metric-sub" style="display: flex; gap: 12px; align-items: center;">
-                        <span id="cpuFreq" title="Frequency">-- MHz</span>
-                        <span id="cpuTemp" title="Temperature"><i class="fa-solid fa-temperature-half"></i> -- °C</span>
-                        <span id="cpuPower" title="Power Consumption"><i class="fa-solid fa-plug"></i> -- W</span>
+                    <div class="metric-sub" id="cpuMetaSub">
+                        <span id="cpuFreq" title="Frequency"><i class="fa-solid fa-bolt" style="color: var(--accent-amber);"></i> -- MHz</span>
+                        <span id="cpuTemp" title="Temperature"><i class="fa-solid fa-temperature-half" style="color: var(--accent-rose);"></i> -- °C</span>
+                        <span id="cpuPower" title="Power"><i class="fa-solid fa-plug" style="color: var(--accent-emerald);"></i> -- W</span>
                     </div>
                 </div>
                 <div class="chart-container">
@@ -143,8 +146,11 @@
                 <div class="card-header">
                     <div class="card-title">
                         <i class="fa-solid fa-hard-drive card-icon icon-disk"></i>
-                        <h2>Storage Partitions</h2>
+                        <h2>Storage Usage</h2>
                     </div>
+                </div>
+                <div class="chart-container">
+                    <canvas id="storageChart"></canvas>
                 </div>
                 <div class="disks-container" id="disksList">
                     <!-- Dynamic Disk Items -->

@@ -1,40 +1,41 @@
-# Linux Server Monitor Dashboard 🖥️
+# サーバー監視ダッシュボード 🖥️
 
-A real-time, lightweight web-based server monitoring dashboard built with Python (`FastAPI`, `psutil`) and HTML5/CSS3/JavaScript (Chart.js, Glassmorphism UI).
+Python (`FastAPI`, `psutil`) と HTML5/CSS3/JavaScript (`Chart.js`) で構築された、軽量でリアルタイムなWebベースのサーバー監視ダッシュボードです。
 
-## Features
+## 主な機能
 
-- ⚡ **Real-time Monitoring**: Automatically refreshes system metrics every 1 second.
-- 🎨 **Modern Glassmorphism UI**: Beautiful dark mode interface with responsive layout.
-- 📊 **Dynamic Charts**: Live streaming historical line charts for CPU and Memory usage.
-- 💻 **Comprehensive Metrics**:
-  - **CPU**: Overall & per-core usage, frequency, temperature (°C), power consumption (W).
-  - **Memory**: Total, used, free RAM & Swap usage.
-  - **Storage**: Storage partitions, mount points, usage %, and Disk I/O.
-  - **Network**: Live Upload / Download speed meters (KB/s) and total sent/received bytes.
-  - **Processes**: Top 5 CPU-consuming processes (PID, Name, CPU %, RAM %).
+- ⚡ **リアルタイム監視**: 1秒ごとにシステムメトリクスを自動更新。
+- 🎨 **美しいグラスモフィズムUI**: レスポンシブ対応のダークモードデザイン（PC・スマートフォン両対応）。
+- 📊 **動的グラフ**: CPUおよびメモリ使用率のリアルタイム折れ線グラフ（横軸に時刻を表示）。
+- 🕒 **サーバー時刻表示**: 稼働中サーバーの現在時刻をリアルタイム表示。
+- 💻 **充実したシステムメトリクス**:
+  - **CPU**: 全体およびコア別の使用率、動作周波数 (MHz)、CPU温度 (°C)、消費電力 (W)。
+  - **メモリ**: 総容量、使用量、空き容量、スワップメモリ使用状況。
+  - **ストレージ**: パーティション一覧、マウントポイント、使用率、ディスクI/O。
+  - **ネットワーク**: リアルタイム送受信速度 (KB/s)、累計送受信データ量。
+  - **プロセス**: CPU使用率上位5件のプロセス情報 (PID、プロセス名、CPU %、メモリ %)。
 
-## Quick Start (Linux / Windows)
+## クイックスタート (Linux / Windows)
 
-### 1. Clone the repository
+### 1. リポジトリのクローン
 ```bash
 git clone <your-repository-url>
 cd servermonitor
 ```
 
-### 2. Install Dependencies
+### 2. 依存パッケージのインストール
 ```bash
 pip install -r requirements.txt
 ```
 
-### 3. Run the Dashboard
+### 3. ダッシュボードの起動
 ```bash
 python main.py --host 0.0.0.0 --port 8888
 ```
 
-Open your browser and navigate to `http://<your-server-ip>:8888`
+起動後、ブラウザで `http://localhost:8888` （または `http://<サーバーのIPアドレス>:8888`）にアクセスしてください。
 
-## Command Line Arguments
+## コマンドライン引数
 
-- `--host`: Host IP address to bind to (Default: `0.0.0.0`)
-- `--port`: Port number to listen on (Default: `8888`)
+- `--host`: バインドするホストIPアドレス (デフォルト: `0.0.0.0`)
+- `--port`: リッスンするポート番号 (デフォルト: `8888`)

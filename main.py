@@ -3,6 +3,8 @@ import os
 import platform
 import time
 import threading
+import json
+from datetime import datetime
 from typing import Dict, Any, List, Optional
 from contextlib import asynccontextmanager
 
@@ -18,6 +20,33 @@ latest_stats: Dict[str, Any] = {}
 stats_lock = threading.Lock()
 collector_thread: Optional[threading.Thread] = None
 is_running = True
+
+HISTORY_FILE = "storage_history.json"
+
+def update_storage_history(usage_percent: float, used_gb: float, total_gb: float) -> List[Dict[str, Any]]:
+    try:
+        history = []
+        if os.path.exists(HISTORY_FILE):
+            with open(HISTORY_FILE, "r") as f:
+                history = json.load(f)
+        
+        today_str = datetime.now().strftime("%Y-%m-%d")
+        
+        if history and history[-1]["date"] == today_str:
+            history[-1] = {"date": today_str, "percent": usage_percent, "used_gb": used_gb, "total_gb": total_gb}
+        else:
+            history.append({"date": today_str, "percent": usage_percent, "used_gb": used_gb, "total_gb": total_gb})
+            
+        if len(history) > 30:
+            history = history[-30:]
+            
+        with open(HISTORY_FILE, "w") as f:
+            json.dump(history, f)
+            
+        return history
+    except Exception as e:
+        print(f"[WARN] Error updating storage history: {e}")
+        return []
 
 # Helper function to convert bytes to human readable format
 def bytes_to_gb(b: int) -> float:
@@ -91,8 +120,8 @@ def collect_metrics_loop():
     
     while is_running:
         try:
-            # Measure overall CPU percent over 1.0s interval (this also sleeps 1.0s)
-            cpu_overall = psutil.cpu_percent(interval=1.0)
+            # Measure overall CPU percent over 3.0s interval (this also sleeps 3.0s)
+            cpu_overall = psutil.cpu_percent(interval=3.0)
             cpu_per_core = psutil.cpu_percent(interval=None, percpu=True)
             cpu_freq = psutil.cpu_freq()
             current_time = time.time()
@@ -104,9 +133,13 @@ def collect_metrics_loop():
             
             # Disk Usage
             disk_partitions_info = []
+            storage_history_data = []
+            
+            is_windows = platform.system() == "Windows"
+            system_drive = os.environ.get("SystemDrive", "C:") + "\\" if is_windows else "/"
+
             for part in psutil.disk_partitions(all=False):
-                # Ignore loop devices and snap packages on Linux
-                if part.device.startswith("/dev/loop") or part.mountpoint.startswith("/snap") or part.fstype == "squashfs":
+                if part.mountpoint != system_drive:
                     continue
                 try:
                     usage = psutil.disk_usage(part.mountpoint)
@@ -119,6 +152,7 @@ def collect_metrics_loop():
                         "free": bytes_to_gb(usage.free),
                         "percent": usage.percent,
                     })
+                    storage_history_data = update_storage_history(usage.percent, bytes_to_gb(usage.used), bytes_to_gb(usage.total))
                 except Exception:
                     continue
 
@@ -146,25 +180,28 @@ def collect_metrics_loop():
             last_net_io = net_io
             last_net_time = current_time
 
-            # Update top processes every 2 ticks (~2 seconds)
-            tick_count += 1
-            if tick_count % 2 == 1 or not top_processes:
-                processes: List[Dict[str, Any]] = []
-                for p in psutil.process_iter(['pid', 'name', 'cpu_percent', 'memory_percent']):
-                    try:
-                        info = p.info
-                        # Skip System Idle Process (PID 0) on Windows to avoid skewing top process list
-                        if info['pid'] == 0:
-                            continue
-                        processes.append({
-                            "pid": info['pid'],
-                            "name": info['name'] or "Unknown",
-                            "cpu": round(info['cpu_percent'] or 0.0, 1),
-                            "memory": round(info['memory_percent'] or 0.0, 1)
-                        })
-                    except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
-                        pass
-                top_processes = sorted(processes, key=lambda x: x['cpu'], reverse=True)[:5]
+            # Update top processes every loop (3 seconds)
+            processes: List[Dict[str, Any]] = []
+            for p in psutil.process_iter(['pid', 'name', 'cpu_percent', 'memory_percent']):
+                try:
+                    info = p.info
+                    # Skip System Idle Process (PID 0) on Windows to avoid skewing top process list
+                    if info['pid'] == 0:
+                        continue
+                    # Convert per-core percent to overall percent
+                    overall_cpu = (info['cpu_percent'] or 0.0) / cores_logical
+                    processes.append({
+                        "pid": info['pid'],
+                        "name": info['name'] or "Unknown",
+                        "cpu": round(overall_cpu, 1),
+                        "memory": round(info['memory_percent'] or 0.0, 1)
+                    })
+                except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                    pass
+            top_processes = sorted(processes, key=lambda x: x['cpu'], reverse=True)[:5]
+
+            now_dt = datetime.now()
+            server_time_str = now_dt.strftime("%Y/%m/%d %H:%M:%S")
 
             # Construct stats snapshot
             snapshot = {
@@ -174,6 +211,8 @@ def collect_metrics_loop():
                     "architecture": architecture,
                     "uptime_seconds": uptime_seconds,
                     "boot_time": boot_time,
+                    "server_time": server_time_str,
+                    "current_timestamp": current_time,
                 },
                 "cpu": {
                     "overall": cpu_overall,
@@ -202,6 +241,7 @@ def collect_metrics_loop():
                     "download_speed_kbps": round(download_speed / 1024, 1),
                 },
                 "top_processes": top_processes,
+                "storage_history": storage_history_data,
             }
 
             with stats_lock:
@@ -209,7 +249,7 @@ def collect_metrics_loop():
                 
         except Exception as e:
             print(f"[WARN] Error in metrics collector loop: {e}")
-            time.sleep(1.0)
+            time.sleep(3.0)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -236,15 +276,25 @@ def get_stats() -> Dict[str, Any]:
     with stats_lock:
         if latest_stats:
             return latest_stats
-    # Fallback if accessed immediately at startup before first background tick finishes
+    from datetime import datetime
+    now_dt = datetime.now()
     return {
-        "system": {"hostname": platform.node(), "os": f"{platform.system()} {platform.release()}", "architecture": platform.machine(), "uptime_seconds": 0, "boot_time": time.time()},
+        "system": {
+            "hostname": platform.node(),
+            "os": f"{platform.system()} {platform.release()}",
+            "architecture": platform.machine(),
+            "uptime_seconds": 0,
+            "boot_time": time.time(),
+            "server_time": now_dt.strftime("%Y/%m/%d %H:%M:%S"),
+            "current_timestamp": time.time(),
+        },
         "cpu": {"overall": 0, "per_core": [], "cores_logical": psutil.cpu_count(logical=True), "cores_physical": psutil.cpu_count(logical=False), "frequency_mhz": 0, "temperature_c": None, "power_w": None},
         "memory": {"total_gb": 0, "used_gb": 0, "available_gb": 0, "percent": 0, "swap_total_gb": 0, "swap_used_gb": 0, "swap_percent": 0},
         "disks": [],
         "disk_io": {"read_bytes": 0, "write_bytes": 0},
         "network": {"bytes_sent": 0, "bytes_recv": 0, "upload_speed_kbps": 0, "download_speed_kbps": 0},
-        "top_processes": []
+        "top_processes": [],
+        "storage_history": []
     }
 
 # Serve static directory
