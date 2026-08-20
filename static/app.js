@@ -150,9 +150,17 @@ document.addEventListener('DOMContentLoaded', () => {
                         ticks: { color: '#64748b', font: { size: 10 } }
                     },
                     y: {
-                        ...commonChartOptions.scales.y,
-                        suggestedMin: 0,
-                        suggestedMax: 100
+                        grid: {
+                            color: 'rgba(255, 255, 255, 0.05)',
+                            drawBorder: false
+                        },
+                        ticks: {
+                            color: '#64748b',
+                            font: { size: 10 },
+                            callback: function(value) {
+                                return value + '%';
+                            }
+                        }
                     }
                 }
             }
@@ -331,6 +339,14 @@ document.addEventListener('DOMContentLoaded', () => {
                     return parts.length === 3 ? `${parts[1]}/${parts[2]}` : item.date;
                 });
                 const storagePercents = data.storage_history.map(item => item.percent);
+
+                const minVal = Math.min(...storagePercents);
+                const maxVal = Math.max(...storagePercents);
+                const diff = maxVal - minVal;
+                const padding = Math.max(2, Math.ceil(diff * 0.2));
+
+                storageChart.options.scales.y.min = Math.max(0, Math.floor(minVal - padding));
+                storageChart.options.scales.y.max = Math.min(100, Math.ceil(maxVal + padding));
 
                 storageChart.data.labels = storageLabels;
                 storageChart.data.datasets[0].data = storagePercents;
