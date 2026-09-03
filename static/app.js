@@ -27,7 +27,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 displayColors: false,
                 callbacks: {
                     label: function(context) {
-                        return `${context.dataset.label}: ${context.parsed.y}%`;
+                        const val = context.parsed.y;
+                        const formatted = context.dataset.label === 'Storage' ? val.toFixed(2) : val.toFixed(1);
+                        return `${context.dataset.label}: ${formatted}%`;
                     }
                 }
             }
@@ -159,9 +161,9 @@ document.addEventListener('DOMContentLoaded', () => {
                             font: { size: 10 },
                             callback: function(value) {
                                 const step = this.options.stepSize || 0.2;
-                                return (Number.isInteger(step) && step >= 1)
-                                    ? Math.round(value) + '%'
-                                    : value.toFixed(1) + '%';
+                                if (Number.isInteger(step) && step >= 1) return Math.round(value) + '%';
+                                if (step >= 0.1) return value.toFixed(1) + '%';
+                                return value.toFixed(2) + '%';
                             }
                         }
                     }
@@ -341,27 +343,36 @@ document.addEventListener('DOMContentLoaded', () => {
                     const parts = item.date.split('-');
                     return parts.length === 3 ? `${parts[1]}/${parts[2]}` : item.date;
                 });
-                const storagePercents = data.storage_history.map(item => item.percent);
+
+                // 総容量と使用容量から正確なパーセンテージを高精度に再計算（微細な変化もグラフに反映）
+                const storagePercents = data.storage_history.map(item => {
+                    if (item.used_gb !== undefined && item.total_gb && item.total_gb > 0) {
+                        return (item.used_gb / item.total_gb) * 100;
+                    }
+                    return item.percent;
+                });
 
                 const minVal = Math.min(...storagePercents);
                 const maxVal = Math.max(...storagePercents);
                 const diff = maxVal - minVal;
 
-                // 綺麗で均等な刻み幅（stepSize）を決定
+                // 綺麗で均等な刻み幅（stepSize）を微細な変動に合わせて決定
                 let step = 0.2;
                 if (diff > 20) step = 5.0;
                 else if (diff > 10) step = 2.0;
                 else if (diff > 4) step = 1.0;
                 else if (diff > 1.5) step = 0.5;
                 else if (diff > 0.5) step = 0.2;
-                else step = 0.2;
+                else if (diff > 0.2) step = 0.1;
+                else if (diff > 0.05) step = 0.05;
+                else step = 0.02;
 
                 // 刻み幅の倍数に合わせて min と max を綺麗に揃える
                 const yMin = Math.max(0, Math.floor((minVal - step * 0.5) / step) * step);
                 const yMax = Math.min(100, Math.ceil((maxVal + step * 0.5) / step) * step);
 
-                storageChart.options.scales.y.min = parseFloat(yMin.toFixed(2));
-                storageChart.options.scales.y.max = parseFloat(yMax.toFixed(2));
+                storageChart.options.scales.y.min = parseFloat(yMin.toFixed(4));
+                storageChart.options.scales.y.max = parseFloat(yMax.toFixed(4));
                 storageChart.options.scales.y.ticks.stepSize = step;
 
                 storageChart.data.labels = storageLabels;
