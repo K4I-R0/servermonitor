@@ -133,7 +133,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     borderWidth: 2,
                     backgroundColor: storageGradient,
                     fill: true,
-                    tension: 0.3,
+                    tension: 0,
                     pointRadius: 4,
                     pointBackgroundColor: '#f59e0b',
                     pointBorderColor: '#ffffff',
