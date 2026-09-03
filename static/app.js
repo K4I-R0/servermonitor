@@ -158,7 +158,10 @@ document.addEventListener('DOMContentLoaded', () => {
                             color: '#64748b',
                             font: { size: 10 },
                             callback: function(value) {
-                                return value + '%';
+                                const step = this.options.stepSize || 0.2;
+                                return (Number.isInteger(step) && step >= 1)
+                                    ? Math.round(value) + '%'
+                                    : value.toFixed(1) + '%';
                             }
                         }
                     }
@@ -343,10 +346,23 @@ document.addEventListener('DOMContentLoaded', () => {
                 const minVal = Math.min(...storagePercents);
                 const maxVal = Math.max(...storagePercents);
                 const diff = maxVal - minVal;
-                const padding = Math.max(2, Math.ceil(diff * 0.2));
 
-                storageChart.options.scales.y.min = Math.max(0, Math.floor(minVal - padding));
-                storageChart.options.scales.y.max = Math.min(100, Math.ceil(maxVal + padding));
+                // 綺麗で均等な刻み幅（stepSize）を決定
+                let step = 0.2;
+                if (diff > 20) step = 5.0;
+                else if (diff > 10) step = 2.0;
+                else if (diff > 4) step = 1.0;
+                else if (diff > 1.5) step = 0.5;
+                else if (diff > 0.5) step = 0.2;
+                else step = 0.2;
+
+                // 刻み幅の倍数に合わせて min と max を綺麗に揃える
+                const yMin = Math.max(0, Math.floor((minVal - step * 0.5) / step) * step);
+                const yMax = Math.min(100, Math.ceil((maxVal + step * 0.5) / step) * step);
+
+                storageChart.options.scales.y.min = parseFloat(yMin.toFixed(2));
+                storageChart.options.scales.y.max = parseFloat(yMax.toFixed(2));
+                storageChart.options.scales.y.ticks.stepSize = step;
 
                 storageChart.data.labels = storageLabels;
                 storageChart.data.datasets[0].data = storagePercents;
