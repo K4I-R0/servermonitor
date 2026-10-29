@@ -180,16 +180,22 @@ def collect_metrics_loop():
                 except Exception:
                     pass
 
+                total_gb = bytes_to_gb(usage.total)
+                used_gb = bytes_to_gb(usage.used)
+                free_gb = bytes_to_gb(usage.free)
+                # グラフの再計算基準（used/total）および画面上の「XX GB / YY GB」表記と完全に一致させる
+                disk_percent = round((usage.used / usage.total * 100), 1) if usage.total > 0 else 0.0
+
                 disk_partitions_info.append({
                     "device": device_name,
                     "mountpoint": root_mount,
                     "fstype": fstype,
-                    "total": bytes_to_gb(usage.total),
-                    "used": bytes_to_gb(usage.used),
-                    "free": bytes_to_gb(usage.free),
-                    "percent": usage.percent,
+                    "total": total_gb,
+                    "used": used_gb,
+                    "free": free_gb,
+                    "percent": disk_percent,
                 })
-                storage_history_data = record_storage_history_if_needed(usage.percent, bytes_to_gb(usage.used), bytes_to_gb(usage.total))
+                storage_history_data = record_storage_history_if_needed(disk_percent, used_gb, total_gb)
             except Exception as e:
                 print(f"[WARN] Error collecting disk metrics for root '{root_mount}': {e}")
 

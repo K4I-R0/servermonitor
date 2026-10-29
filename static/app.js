@@ -315,7 +315,11 @@ document.addEventListener('DOMContentLoaded', () => {
             // Disks
             const disksContainer = document.getElementById('disksList');
             if (data.disks && data.disks.length > 0) {
-                disksContainer.innerHTML = data.disks.map(disk => `
+                disksContainer.innerHTML = data.disks.map(disk => {
+                    const percent = (disk.total && disk.total > 0)
+                        ? ((disk.used / disk.total) * 100).toFixed(1)
+                        : (disk.percent !== undefined ? disk.percent : 0);
+                    return `
                     <div class="disk-item">
                         <div class="disk-header">
                             <div class="disk-name">
@@ -324,14 +328,15 @@ document.addEventListener('DOMContentLoaded', () => {
                                 <span class="disk-mount">${disk.mountpoint}</span>
                             </div>
                             <div class="disk-stats">
-                                ${disk.used} GB / ${disk.total} GB (${disk.percent}%)
+                                ${disk.used} GB / ${disk.total} GB (${percent}%)
                             </div>
                         </div>
                         <div class="progress-bar-track">
-                            <div class="progress-bar-fill disk-fill" style="width: ${disk.percent}%"></div>
+                            <div class="progress-bar-fill disk-fill" style="width: ${percent}%"></div>
                         </div>
                     </div>
-                `).join('');
+                `;
+                }).join('');
             } else {
                 disksContainer.innerHTML = '<div class="sub-detail" style="text-align: center; padding: 12px;">No partitions available</div>';
             }
