@@ -341,16 +341,54 @@ document.addEventListener('DOMContentLoaded', () => {
                 disksContainer.innerHTML = '<div class="sub-detail" style="text-align: center; padding: 12px;">No partitions available</div>';
             }
 
-            // Update Storage Chart (History)
+            // Update Storage Chart (History + Realtime)
             if (storageChart && data.storage_history && data.storage_history.length > 0) {
+                const historyList = data.storage_history.map(item => ({ ...item }));
+
+                // 今日のリアルタイムディスク情報をグラフの最新点（右端）として反映
+                if (data.disks && data.disks.length > 0) {
+                    const currentDisk = data.disks[0];
+                    const currentPercent = (currentDisk.total && currentDisk.total > 0)
+                        ? (currentDisk.used / currentDisk.total) * 100
+                        : currentDisk.percent;
+
+                    let todayStr = '';
+                    if (data.system && data.system.server_time) {
+                        const datePart = data.system.server_time.split(' ')[0];
+                        todayStr = datePart.replace(/\//g, '-');
+                    } else {
+                        const now = new Date();
+                        const pad = n => String(n).padStart(2, '0');
+                        todayStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+                    }
+
+                    const lastItem = historyList[historyList.length - 1];
+                    if (lastItem.date === todayStr) {
+                        lastItem.used_gb = currentDisk.used;
+                        lastItem.total_gb = currentDisk.total;
+                        lastItem.calculatedPercent = currentPercent;
+                    } else {
+                        historyList.push({
+                            date: todayStr,
+                            used_gb: currentDisk.used,
+                            total_gb: currentDisk.total,
+                            calculatedPercent: currentPercent
+                        });
+                        if (historyList.length > 30) historyList.shift();
+                    }
+                }
+
                 // Parse date strings to simpler format (e.g., MM/DD)
-                const storageLabels = data.storage_history.map(item => {
+                const storageLabels = historyList.map(item => {
                     const parts = item.date.split('-');
                     return parts.length === 3 ? `${parts[1]}/${parts[2]}` : item.date;
                 });
 
                 // 総容量と使用容量から正確なパーセンテージを高精度に再計算（微細な変化もグラフに反映）
-                const storagePercents = data.storage_history.map(item => {
+                const storagePercents = historyList.map(item => {
+                    if (item.calculatedPercent !== undefined) {
+                        return item.calculatedPercent;
+                    }
                     if (item.used_gb !== undefined && item.total_gb && item.total_gb > 0) {
                         return (item.used_gb / item.total_gb) * 100;
                     }

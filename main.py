@@ -39,34 +39,32 @@ def init_storage_history():
         storage_history_cache = []
 
 def record_storage_history_if_needed(usage_percent: float, used_gb: float, total_gb: float) -> List[Dict[str, Any]]:
-    """Record root partition storage usage only once per day to prevent unnecessary disk I/O."""
+    """Record root partition storage usage. Writes to disk once a day or on date change,
+    while keeping the in-memory today entry up to date with real-time metrics."""
     global storage_history_cache, last_recorded_date
     today_str = datetime.now().strftime("%Y-%m-%d")
+    today_entry = {"date": today_str, "percent": usage_percent, "used_gb": used_gb, "total_gb": total_gb}
     
-    need_record = False
+    need_file_write = False
     if last_recorded_date != today_str:
-        need_record = True
-    elif storage_history_cache and storage_history_cache[-1].get("date") == today_str:
-        # If total_gb differs (e.g., pulled from dev repo to prod server), force re-record
-        if storage_history_cache[-1].get("total_gb") != total_gb:
-            need_record = True
+        need_file_write = True
     elif not storage_history_cache:
-        need_record = True
+        need_file_write = True
+    elif storage_history_cache and storage_history_cache[-1].get("total_gb") != total_gb:
+        need_file_write = True
     
-    if need_record:
+    # メモリ上のキャッシュでは、今日のデータを常に最新のリアルタイム値に更新
+    if storage_history_cache and storage_history_cache[-1].get("date") == today_str:
+        storage_history_cache[-1] = today_entry
+    else:
+        storage_history_cache.append(today_entry)
+        if len(storage_history_cache) > 30:
+            storage_history_cache = storage_history_cache[-30:]
+    
+    if need_file_write:
         try:
-            # If today's entry already exists in cache, update it; otherwise append
-            if storage_history_cache and storage_history_cache[-1].get("date") == today_str:
-                storage_history_cache[-1] = {"date": today_str, "percent": usage_percent, "used_gb": used_gb, "total_gb": total_gb}
-            else:
-                storage_history_cache.append({"date": today_str, "percent": usage_percent, "used_gb": used_gb, "total_gb": total_gb})
-                
-            if len(storage_history_cache) > 30:
-                storage_history_cache = storage_history_cache[-30:]
-                
             with open(HISTORY_FILE, "w", encoding="utf-8") as f:
                 json.dump(storage_history_cache, f, ensure_ascii=False, indent=2)
-                
             last_recorded_date = today_str
             print(f"[INFO] Recorded storage history for {today_str}: {usage_percent}% ({used_gb}/{total_gb} GB)")
         except Exception as e:
