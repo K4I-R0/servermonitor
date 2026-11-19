@@ -25,12 +25,12 @@ cd servermonitor
 
 ### 2. 依存パッケージのインストール
 ```bash
-pip install -r requirements.txt
+uv sync
 ```
 
 ### 3. ダッシュボードの起動
 ```bash
-python main.py --host 0.0.0.0 --port 8888
+uv run python main.py --host 0.0.0.0 --port 8888
 ```
 
 起動後、ブラウザで `http://localhost:8888` （または `http://<サーバーのIPアドレス>:8888`）にアクセスしてください。

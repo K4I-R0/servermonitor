@@ -1,0 +1,6 @@
+.venv/
+__pycache__/
+*.py[cod]
+.git/
+*.log
+storage_history.json
